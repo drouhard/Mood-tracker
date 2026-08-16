@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#12141a">
+<meta name="description" content="A private, offline mood and health tracker. Data never leaves your phone.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mood">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Mood &amp; Health Tracker</title>
+<style>
+  :root {
+    --bg: #0f1116;
+    --surface: #171a21;
+    --surface-2: #1f232c;
+    --line: #2a2f3a;
+    --text: #e8eaf0;
+    --muted: #9aa3b2;
+    --accent: #6ea8fe;
+    --accent-ink: #0b1220;
+    --good: #5ed4a0;
+    --warn: #f0b458;
+    --bad: #f0796d;
+    --radius: 14px;
+    --tap: 56px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f6f9;
+      --surface: #ffffff;
+      --surface-2: #eef0f5;
+      --line: #dfe3ea;
+      --text: #1b1f27;
+      --muted: #656e7e;
+      --accent: #2f6fd0;
+      --accent-ink: #ffffff;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: contain;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+    padding: calc(10px + env(safe-area-inset-top)) 16px 0;
+  }
+  .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  h1 { font-size: 17px; margin: 0; letter-spacing: .2px; }
+  .clock { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  nav { display: flex; gap: 4px; margin-top: 10px; }
+  nav button {
+    flex: 1; background: none; border: 0; color: var(--muted);
+    font: inherit; font-size: 14px; font-weight: 600; padding: 10px 4px;
+    border-bottom: 2px solid transparent; cursor: pointer;
+  }
+  nav button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+
+  main { padding: 16px; max-width: 640px; margin: 0 auto; }
+  section.card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 14px; margin-bottom: 14px;
+  }
+  .card h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 0 0 10px; font-weight: 700;
+  }
+  .scale { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .scale button {
+    min-height: var(--tap);
+    background: var(--surface-2); border: 1.5px solid transparent;
+    border-radius: 12px; color: var(--text); font: inherit;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px; padding: 8px 2px; cursor: pointer; transition: transform .08s ease, border-color .12s ease, background .12s ease;
+  }
+  .scale button .emoji { font-size: 24px; line-height: 1; }
+  .scale button .lbl { font-size: 10px; color: var(--muted); text-align: center; }
+  .scale button:active { transform: scale(.94); }
+  .scale button[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
+  }
+  .scale button[aria-pressed="true"] .lbl { color: var(--text); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips button {
+    background: var(--surface-2); border: 1.5px solid transparent; color: var(--text);
+    border-radius: 999px; padding: 11px 14px; font: inherit; font-size: 14px;
+    min-height: 44px; cursor: pointer; transition: transform .08s ease;
+  }
+  .chips button:active { transform: scale(.95); }
+  .chips button[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
+  }
+
+  textarea {
+    width: 100%; background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 12px; color: var(--text); font: inherit; padding: 12px;
+    resize: vertical; min-height: 56px;
+  }
+  textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .savebar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--line);
+    display: flex; gap: 10px; max-width: 640px; margin: 0 auto;
+  }
+  .savebar button {
+    flex: 1; min-height: var(--tap); border-radius: 14px; border: 0;
+    font: inherit; font-size: 17px; font-weight: 700; cursor: pointer;
+    background: var(--accent); color: var(--accent-ink);
+  }
+  .savebar button.ghost {
+    flex: 0 0 auto; padding: 0 18px; background: var(--surface-2); color: var(--muted); font-weight: 600;
+    border: 1px solid var(--line);
+  }
+  .savebar button:disabled { opacity: .4; }
+  .savebar button:active:not(:disabled) { transform: scale(.98); }
+
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%) translateY(20px);
+    bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 40;
+    background: var(--good); color: #04150e; font-weight: 700; font-size: 14px;
+    padding: 10px 18px; border-radius: 999px; opacity: 0; pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .daygroup { margin-bottom: 18px; }
+  .dayhead {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 13px; font-weight: 700; color: var(--muted); margin: 0 2px 8px;
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+  .entry {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px; margin-bottom: 8px; display: flex; gap: 12px; align-items: flex-start;
+  }
+  .entry .time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 62px; padding-top: 4px; }
+  .entry .body { flex: 1; min-width: 0; }
+  .entry .marks { display: flex; flex-wrap: wrap; gap: 10px; font-size: 14px; align-items: center; }
+  .entry .marks span.mark { display: inline-flex; align-items: center; gap: 4px; }
+  .entry .marks .mk { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .entry .tags { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .entry .tags em {
+    font-style: normal; font-size: 12px; background: var(--surface-2);
+    border-radius: 999px; padding: 3px 9px; color: var(--muted);
+  }
+  .entry .note { margin-top: 6px; font-size: 14px; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+  .entry .del {
+    background: none; border: 0; color: var(--muted); font-size: 18px; line-height: 1;
+    padding: 6px 4px; cursor: pointer; min-width: 32px; min-height: 32px;
+  }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center; }
+  .stat .n { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .spark { display: flex; align-items: flex-end; gap: 3px; height: 62px; margin-top: 4px; }
+  .spark div { flex: 1; background: var(--surface-2); border-radius: 3px 3px 0 0; min-height: 3px; position: relative; }
+  .spark div.has { background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 45%, transparent)); }
+  .sparkx { display: flex; gap: 3px; margin-top: 6px; font-size: 9px; color: var(--muted); }
+  .sparkx div { flex: 1; text-align: center; }
+
+  .empty { text-align: center; color: var(--muted); padding: 40px 20px; font-size: 15px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row button {
+    flex: 1 1 140px; min-height: 46px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .row button.danger { color: var(--bad); }
+  .hint { font-size: 12px; color: var(--muted); margin: 8px 2px 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title-row">
+    <h1>Mood &amp; Health</h1>
+    <div class="clock" id="clock"></div>
+  </div>
+  <nav role="tablist">
+    <button role="tab" id="tab-log" aria-selected="true" aria-controls="view-log">Log</button>
+    <button role="tab" id="tab-history" aria-selected="false" aria-controls="view-history">History</button>
+    <button role="tab" id="tab-data" aria-selected="false" aria-controls="view-data">Data</button>
+  </nav>
+</header>
+
+<main>
+  <div id="view-log" role="tabpanel" aria-labelledby="tab-log"></div>
+
+  <div id="view-history" role="tabpanel" aria-labelledby="tab-history" hidden>
+    <section class="card">
+      <h2>Last 7 days</h2>
+      <div class="stats" id="stats"></div>
+    </section>
+    <section class="card">
+      <h2>Daily average mood &middot; 14 days</h2>
+      <div class="spark" id="spark"></div>
+      <div class="sparkx" id="sparkx"></div>
+    </section>
+    <div id="entries"></div>
+  </div>
+
+  <div id="view-data" role="tabpanel" aria-labelledby="tab-data" hidden>
+    <section class="card">
+      <h2>Backup</h2>
+      <div class="row">
+        <button id="export-json">Export JSON</button>
+        <button id="export-csv">Export CSV</button>
+        <button id="import-btn">Import JSON</button>
+      </div>
+      <input type="file" id="import-file" accept="application/json,.json" hidden>
+      <p class="hint">Everything is stored only in this browser's local storage. Clearing site data, switching browsers, or using private mode will lose your entries — export a backup now and then.</p>
+    </section>
+    <section class="card">
+      <h2>Storage</h2>
+      <div id="storage-info" class="hint" style="margin-top:0"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="danger" id="clear-all">Delete all entries</button>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div class="savebar" id="savebar">
+  <button class="ghost" id="reset" type="button">Clear</button>
+  <button id="save" type="button" disabled>Save entry</button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------------------------------------------------------------
+     What gets tracked. Edit these two lists to change the form —
+     everything else (storage, history, export) adapts automatically.
+     Adding a new scale or tag will not break existing entries.
+  ----------------------------------------------------------------*/
+  var SCALES = [
+    { key: 'mood', label: 'Mood', options: [
+      { v: 1, emoji: '😞', label: 'Awful' },
+      { v: 2, emoji: '🙁', label: 'Low' },
+      { v: 3, emoji: '😐', label: 'Meh' },
+      { v: 4, emoji: '🙂', label: 'Good' },
+      { v: 5, emoji: '😄', label: 'Great' }
+    ]},
+    { key: 'energy', label: 'Energy', options: [
+      { v: 1, emoji: '🥱', label: 'Drained' },
+      { v: 2, emoji: '😪', label: 'Low' },
+      { v: 3, emoji: '😌', label: 'Steady' },
+      { v: 4, emoji: '😃', label: 'High' },
+      { v: 5, emoji: '⚡', label: 'Wired' }
+    ]},
+    { key: 'body', label: 'Body', options: [
+      { v: 1, emoji: '🤒', label: 'Rough' },
+      { v: 2, emoji: '😣', label: 'Achy' },
+      { v: 3, emoji: '😐', label: 'OK' },
+      { v: 4, emoji: '👍', label: 'Fine' },
+      { v: 5, emoji: '💪', label: 'Strong' }
+    ]}
+  ];
+
+  var TAGS = [
+    'Slept well', 'Poor sleep', 'Exercised', 'Outside', 'Social',
+    'Headache', 'Nausea', 'Pain', 'Anxious', 'Foggy',
+    'Caffeine', 'Alcohol', 'Ate well', 'Meds taken', 'Work stress'
+  ];
+
+  var KEY = 'moodtracker.v1';
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ------------------------------ storage ------------------------------ */
+  var entries = load();
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (!raw) return [];
+      var data = JSON.parse(raw);
+      var list = Array.isArray(data) ? data : (data && data.entries) || [];
+      return list.filter(function (e) { return e && e.ts; })
+                 .sort(function (a, b) { return b.ts.localeCompare(a.ts); });
+    } catch (err) {
+      console.error('Could not read saved entries', err);
+      return [];
+    }
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ version: 1, entries: entries }));
+      return true;
+    } catch (err) {
+      alert('Could not save: browser storage is full or blocked.\n\n' + err);
+      return false;
+    }
+  }
+
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  /* ------------------------------ draft ------------------------------ */
+  var draft = blank();
+
+  function blank() {
+    var d = { tags: [], note: '' };
+    SCALES.forEach(function (s) { d[s.key] = null; });
+    return d;
+  }
+
+  function hasContent() {
+    if (draft.tags.length || draft.note.trim()) return true;
+    return SCALES.some(function (s) { return draft[s.key] != null; });
+  }
+
+  /* ------------------------------ log view ------------------------------ */
+  function buildLogView() {
+    var root = $('view-log');
+    root.innerHTML = '';
+
+    SCALES.forEach(function (scale) {
+      var card = document.createElement('section');
+      card.className = 'card';
+      var h = document.createElement('h2');
+      h.textContent = scale.label;
+      card.appendChild(h);
+
+      var grid = document.createElement('div');
+      grid.className = 'scale';
+      scale.options.forEach(function (opt) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.setAttribute('aria-pressed', 'false');
+        b.setAttribute('aria-label', scale.label + ': ' + opt.label);
+        b.dataset.scale = scale.key;
+        b.dataset.value = opt.v;
+        b.innerHTML = '<span class="emoji">' + opt.emoji + '</span><span class="lbl"></span>';
+        b.querySelector('.lbl').textContent = opt.label;
+        b.addEventListener('click', function () {
+          draft[scale.key] = (draft[scale.key] === opt.v) ? null : opt.v;
+          buzz();
+          syncLogView();
+        });
+        grid.appendChild(b);
+      });
+      card.appendChild(grid);
+      root.appendChild(card);
+    });
+
+    var tagCard = document.createElement('section');
+    tagCard.className = 'card';
+    tagCard.innerHTML = '<h2>Tags</h2>';
+    var chips = document.createElement('div');
+    chips.className = 'chips';
+    TAGS.forEach(function (tag) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = tag;
+      b.dataset.tag = tag;
+      b.setAttribute('aria-pressed', 'false');
+      b.addEventListener('click', function () {
+        var i = draft.tags.indexOf(tag);
+        if (i === -1) draft.tags.push(tag); else draft.tags.splice(i, 1);
+        buzz();
+        syncLogView();
+      });
+      chips.appendChild(b);
+    });
+    tagCard.appendChild(chips);
+    root.appendChild(tagCard);
+
+    var noteCard = document.createElement('section');
+    noteCard.className = 'card';
+    noteCard.innerHTML = '<h2>Note (optional)</h2>';
+    var ta = document.createElement('textarea');
+    ta.id = 'note';
+    ta.rows = 2;
+    ta.placeholder = 'Anything worth remembering…';
+    ta.addEventListener('input', function () {
+      draft.note = ta.value;
+      syncSaveButton();
+    });
+    noteCard.appendChild(ta);
+    root.appendChild(noteCard);
+  }
+
+  function syncLogView() {
+    document.querySelectorAll('#view-log .scale button').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(draft[b.dataset.scale] === Number(b.dataset.value)));
+    });
+    document.querySelectorAll('#view-log .chips button').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(draft.tags.indexOf(b.dataset.tag) !== -1));
+    });
+    var ta = $('note');
+    if (ta && ta.value !== draft.note) ta.value = draft.note;
+    syncSaveButton();
+  }
+
+  function syncSaveButton() { $('save').disabled = !hasContent(); }
+
+  function buzz() {
+    if (navigator.vibrate) { try { navigator.vibrate(8); } catch (e) {} }
+  }
+
+  /* ------------------------------ actions ------------------------------ */
+  $('save').addEventListener('click', function () {
+    if (!hasContent()) return;
+    var entry = { id: uid(), ts: new Date().toISOString(), tags: draft.tags.slice(), note: draft.note.trim() };
+    SCALES.forEach(function (s) { entry[s.key] = draft[s.key]; });
+    entries.unshift(entry);
+    if (!save()) { entries.shift(); return; }
+    draft = blank();
+    syncLogView();
+    renderHistory();
+    buzz();
+    toast('Logged at ' + timeStr(entry.ts));
+  });
+
+  $('reset').addEventListener('click', function () {
+    draft = blank();
+    syncLogView();
+  });
+
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.classList.remove('show'); }, 1800);
+  }
+
+  /* ------------------------------ history ------------------------------ */
+  function dayKey(iso) {
+    var d = new Date(iso);
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function timeStr(iso) {
+    return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  function dayLabel(key) {
+    var today = dayKey(new Date().toISOString());
+    var yesterday = dayKey(new Date(Date.now() - 864e5).toISOString());
+    if (key === today) return 'Today';
+    if (key === yesterday) return 'Yesterday';
+    var p = key.split('-');
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+  function emojiFor(scaleKey, value) {
+    var s = SCALES.find(function (x) { return x.key === scaleKey; });
+    if (!s || value == null) return '';
+    var o = s.options.find(function (x) { return x.v === value; });
+    return o ? o.emoji : '';
+  }
+
+  function renderHistory() {
+    renderStats();
+    renderSpark();
+
+    var wrap = $('entries');
+    wrap.innerHTML = '';
+    if (!entries.length) {
+      wrap.innerHTML = '<div class="empty">No entries yet.<br>Tap how you feel on the Log tab.</div>';
+      return;
+    }
+
+    var groups = {};
+    var order = [];
+    entries.forEach(function (e) {
+      var k = dayKey(e.ts);
+      if (!groups[k]) { groups[k] = []; order.push(k); }
+      groups[k].push(e);
+    });
+
+    order.forEach(function (k) {
+      var g = document.createElement('div');
+      g.className = 'daygroup';
+      var head = document.createElement('div');
+      head.className = 'dayhead';
+      var avg = average(groups[k].map(function (e) { return e.mood; }));
+      head.innerHTML = '<span></span><span></span>';
+      head.children[0].textContent = dayLabel(k);
+      head.children[1].textContent = groups[k].length + (groups[k].length === 1 ? ' entry' : ' entries') +
+        (avg == null ? '' : ' · mood ' + avg.toFixed(1));
+      g.appendChild(head);
+
+      groups[k].forEach(function (e) { g.appendChild(entryEl(e)); });
+      wrap.appendChild(g);
+    });
+  }
+
+  function entryEl(e) {
+    var el = document.createElement('div');
+    el.className = 'entry';
+
+    var t = document.createElement('div');
+    t.className = 'time';
+    t.textContent = timeStr(e.ts);
+    el.appendChild(t);
+
+    var body = document.createElement('div');
+    body.className = 'body';
+
+    var marks = document.createElement('div');
+    marks.className = 'marks';
+    SCALES.forEach(function (s) {
+      if (e[s.key] == null) return;
+      var span = document.createElement('span');
+      span.className = 'mark';
+      span.innerHTML = '<span class="mk"></span><span></span>';
+      span.children[0].textContent = s.label;
+      span.children[1].textContent = emojiFor(s.key, e[s.key]) + ' ' + e[s.key];
+      marks.appendChild(span);
+    });
+    if (marks.children.length) body.appendChild(marks);
+
+    if (e.tags && e.tags.length) {
+      var tags = document.createElement('div');
+      tags.className = 'tags';
+      e.tags.forEach(function (tag) {
+        var em = document.createElement('em');
+        em.textContent = tag;
+        tags.appendChild(em);
+      });
+      body.appendChild(tags);
+    }
+
+    if (e.note) {
+      var n = document.createElement('div');
+      n.className = 'note';
+      n.textContent = e.note;
+      body.appendChild(n);
+    }
+
+    el.appendChild(body);
+
+    var del = document.createElement('button');
+    del.className = 'del';
+    del.type = 'button';
+    del.textContent = '×';
+    del.setAttribute('aria-label', 'Delete entry from ' + timeStr(e.ts));
+    del.addEventListener('click', function () {
+      if (!confirm('Delete this entry?')) return;
+      entries = entries.filter(function (x) { return x.id !== e.id; });
+      save();
+      renderHistory();
+    });
+    el.appendChild(del);
+
+    return el;
+  }
+
+  function average(values) {
+    var nums = values.filter(function (v) { return typeof v === 'number'; });
+    if (!nums.length) return null;
+    return nums.reduce(function (a, b) { return a + b; }, 0) / nums.length;
+  }
+
+  function renderStats() {
+    var since = Date.now() - 7 * 864e5;
+    var recent = entries.filter(function (e) { return new Date(e.ts).getTime() >= since; });
+    var mood = average(recent.map(function (e) { return e.mood; }));
+    var energy = average(recent.map(function (e) { return e.energy; }));
+    var box = $('stats');
+    box.innerHTML = '';
+    [
+      { k: 'Entries', n: String(recent.length) },
+      { k: 'Avg mood', n: mood == null ? '–' : mood.toFixed(1) },
+      { k: 'Avg energy', n: energy == null ? '–' : energy.toFixed(1) }
+    ].forEach(function (s) {
+      var d = document.createElement('div');
+      d.className = 'stat';
+      d.innerHTML = '<div class="n"></div><div class="k"></div>';
+      d.children[0].textContent = s.n;
+      d.children[1].textContent = s.k;
+      box.appendChild(d);
+    });
+  }
+
+  function renderSpark() {
+    var bars = $('spark');
+    var axis = $('sparkx');
+    bars.innerHTML = '';
+    axis.innerHTML = '';
+    var days = [];
+    for (var i = 13; i >= 0; i--) {
+      var d = new Date(Date.now() - i * 864e5);
+      days.push(dayKey(d.toISOString()));
+    }
+    var byDay = {};
+    entries.forEach(function (e) {
+      if (typeof e.mood !== 'number') return;
+      var k = dayKey(e.ts);
+      (byDay[k] = byDay[k] || []).push(e.mood);
+    });
+    days.forEach(function (k, i) {
+      var avg = byDay[k] ? average(byDay[k]) : null;
+      var bar = document.createElement('div');
+      if (avg != null) {
+        bar.className = 'has';
+        bar.style.height = Math.round(((avg - 0.5) / 4.5) * 100) + '%';
+        bar.title = k + ': ' + avg.toFixed(1);
+      } else {
+        bar.style.height = '4px';
+      }
+      bars.appendChild(bar);
+
+      var lab = document.createElement('div');
+      lab.textContent = (i % 2 === 0) ? k.slice(8) : '';
+      axis.appendChild(lab);
+    });
+  }
+
+  /* ------------------------------ data tab ------------------------------ */
+  function download(name, text, type) {
+    var blob = new Blob([text], { type: type });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function stamp() {
+    var d = new Date();
+    return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+  }
+
+  $('export-json').addEventListener('click', function () {
+    download('mood-tracker-' + stamp() + '.json',
+      JSON.stringify({ version: 1, exported: new Date().toISOString(), entries: entries }, null, 2),
+      'application/json');
+  });
+
+  $('export-csv').addEventListener('click', function () {
+    var cols = ['timestamp'].concat(SCALES.map(function (s) { return s.key; }), ['tags', 'note']);
+    var rows = [cols.join(',')];
+    entries.slice().reverse().forEach(function (e) {
+      var vals = [e.ts].concat(
+        SCALES.map(function (s) { return e[s.key] == null ? '' : e[s.key]; }),
+        [(e.tags || []).join('; '), e.note || '']
+      );
+      rows.push(vals.map(csvCell).join(','));
+    });
+    download('mood-tracker-' + stamp() + '.csv', rows.join('\n'), 'text/csv');
+  });
+
+  function csvCell(v) {
+    var s = String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  $('import-btn').addEventListener('click', function () { $('import-file').click(); });
+
+  $('import-file').addEventListener('change', function (ev) {
+    var file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var data = JSON.parse(String(reader.result));
+        var incoming = Array.isArray(data) ? data : (data && data.entries) || [];
+        incoming = incoming.filter(function (e) { return e && e.ts; });
+        if (!incoming.length) { alert('No entries found in that file.'); return; }
+        var seen = {};
+        entries.forEach(function (e) { seen[e.id || e.ts] = true; });
+        var added = 0;
+        incoming.forEach(function (e) {
+          var k = e.id || e.ts;
+          if (seen[k]) return;
+          seen[k] = true;
+          if (!e.id) e.id = uid();
+          entries.push(e);
+          added++;
+        });
+        entries.sort(function (a, b) { return b.ts.localeCompare(a.ts); });
+        save();
+        renderHistory();
+        renderStorage();
+        toast(added ? added + ' ' + (added === 1 ? 'entry' : 'entries') + ' imported' : 'Already up to date');
+      } catch (err) {
+        alert('That file could not be read as a tracker export.\n\n' + err);
+      }
+    };
+    reader.readAsText(file);
+    ev.target.value = '';
+  });
+
+  $('clear-all').addEventListener('click', function () {
+    if (!entries.length) { alert('Nothing to delete.'); return; }
+    if (!confirm('Delete all ' + entries.length + ' entries? This cannot be undone. Export a backup first if you want to keep them.')) return;
+    if (!confirm('Really delete everything?')) return;
+    entries = [];
+    save();
+    renderHistory();
+    renderStorage();
+    toast('All entries deleted');
+  });
+
+  function renderStorage() {
+    var bytes = 0;
+    try { bytes = (localStorage.getItem(KEY) || '').length; } catch (e) {}
+    var oldest = entries.length ? new Date(entries[entries.length - 1].ts).toLocaleDateString() : '–';
+    $('storage-info').textContent =
+      entries.length + ' entries · about ' + (bytes < 1024 ? bytes + ' bytes' : (bytes / 1024).toFixed(1) + ' KB') +
+      ' · oldest ' + oldest;
+  }
+
+  /* ------------------------------ tabs ------------------------------ */
+  var TABS = [
+    { btn: 'tab-log', view: 'view-log' },
+    { btn: 'tab-history', view: 'view-history' },
+    { btn: 'tab-data', view: 'view-data' }
+  ];
+
+  TABS.forEach(function (t) {
+    $(t.btn).addEventListener('click', function () { showTab(t.btn); });
+  });
+
+  function showTab(btnId) {
+    TABS.forEach(function (t) {
+      var on = t.btn === btnId;
+      $(t.btn).setAttribute('aria-selected', String(on));
+      $(t.view).hidden = !on;
+    });
+    $('savebar').hidden = btnId !== 'tab-log';
+    if (btnId === 'tab-history') renderHistory();
+    if (btnId === 'tab-data') renderStorage();
+    window.scrollTo(0, 0);
+  }
+
+  /* ------------------------------ clock ------------------------------ */
+  function tick() {
+    $('clock').textContent = new Date().toLocaleString([], {
+      weekday: 'short', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit'
+    });
+  }
+  tick();
+  setInterval(tick, 15000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) tick(); });
+
+  /* ------------------------------ boot ------------------------------ */
+  buildLogView();
+  syncLogView();
+  renderHistory();
+  renderStorage();
+})();
+</script>
+</body>
+</html>
