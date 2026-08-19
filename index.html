@@ -186,6 +186,15 @@
   }
   .row button.danger { color: var(--bad); }
   .hint { font-size: 12px; color: var(--muted); margin: 8px 2px 0; }
+
+  .recorded { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .recorded .val { font-size: 15px; }
+  .recorded button {
+    background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
+    border-radius: 999px; padding: 0 16px; min-height: 44px;
+    font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .recorded button:active { transform: scale(.96); }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -280,6 +289,18 @@
     ]}
   ];
 
+  /* Sleep is asked once per night rather than once per entry: it is stored on
+     whichever entry first answers it, together with `sleepFor` — the day key of
+     the morning that night ended. Once a night has an answer the question stops
+     being asked for it. */
+  var SLEEP = { key: 'sleep', label: 'Last night\u2019s sleep', short: 'Sleep', options: [
+    { v: 1, emoji: '\ud83d\ude29', label: 'Terrible' },
+    { v: 2, emoji: '\ud83d\ude2a', label: 'Restless' },
+    { v: 3, emoji: '\ud83d\ude10', label: 'OK' },
+    { v: 4, emoji: '\ud83d\ude42', label: 'Good' },
+    { v: 5, emoji: '\ud83d\ude34', label: 'Great' }
+  ]};
+
   var TAGS = [
     'Slept well', 'Poor sleep', 'Exercised', 'Outside', 'Social',
     'Headache', 'Nausea', 'Pain', 'Anxious', 'Foggy',
@@ -320,17 +341,44 @@
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 
+  /* ------------------------------ nights ------------------------------ */
+  /* A night is keyed by the morning it ended. Before 4am you have not slept
+     tonight yet, so "last night" still means the previous morning's night. */
+  function nightKeyNow() {
+    var d = new Date();
+    if (d.getHours() < 4) d = new Date(d.getTime() - 864e5);
+    return dayKeyOf(d);
+  }
+
+  function nightLabel(key) {
+    var p = key.split('-');
+    var d = new Date(+p[0], +p[1] - 1, +p[2] - 1);
+    return 'Night of ' + d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  /* The entry that already answers this night, if any. */
+  function sleepRecord(key) {
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].sleepFor === key && entries[i].sleep != null) return entries[i];
+    }
+    return null;
+  }
+
+  var currentNight = nightKeyNow();
+  var editingSleep = false;
+
   /* ------------------------------ draft ------------------------------ */
   var draft = blank();
 
   function blank() {
-    var d = { tags: [], note: '' };
+    var d = { tags: [], note: '', sleep: null };
     SCALES.forEach(function (s) { d[s.key] = null; });
     return d;
   }
 
   function hasContent() {
     if (draft.tags.length || draft.note.trim()) return true;
+    if (draft.sleep != null && !sleepRecord(currentNight)) return true;
     return SCALES.some(function (s) { return draft[s.key] != null; });
   }
 
@@ -338,6 +386,8 @@
   function buildLogView() {
     var root = $('view-log');
     root.innerHTML = '';
+
+    root.appendChild(buildSleepCard());
 
     SCALES.forEach(function (scale) {
       var card = document.createElement('section');
@@ -405,6 +455,99 @@
     root.appendChild(noteCard);
   }
 
+  /* The sleep card asks about last night, but only while that night is
+     unanswered; once answered it collapses to what was recorded. */
+  function buildSleepCard() {
+    var card = document.createElement('section');
+    card.className = 'card';
+    card.id = 'sleep-card';
+
+    var h = document.createElement('h2');
+    h.textContent = SLEEP.label;
+    card.appendChild(h);
+
+    var grid = document.createElement('div');
+    grid.className = 'scale';
+    grid.id = 'sleep-scale';
+    SLEEP.options.forEach(function (opt) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('aria-pressed', 'false');
+      b.setAttribute('aria-label', SLEEP.label + ': ' + opt.label);
+      b.dataset.value = opt.v;
+      b.innerHTML = '<span class="emoji">' + opt.emoji + '</span><span class="lbl"></span>';
+      b.querySelector('.lbl').textContent = opt.label;
+      b.addEventListener('click', function () { pickSleep(opt.v); });
+      grid.appendChild(b);
+    });
+    card.appendChild(grid);
+
+    var done = document.createElement('div');
+    done.className = 'recorded';
+    done.id = 'sleep-recorded';
+    done.hidden = true;
+    var val = document.createElement('span');
+    val.className = 'val';
+    val.id = 'sleep-value';
+    done.appendChild(val);
+    var change = document.createElement('button');
+    change.type = 'button';
+    change.textContent = 'Change';
+    change.addEventListener('click', function () {
+      editingSleep = true;
+      syncSleepCard();
+    });
+    done.appendChild(change);
+    card.appendChild(done);
+
+    var hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.id = 'sleep-night';
+    card.appendChild(hint);
+
+    return card;
+  }
+
+  /* Answering an unrecorded night goes into the draft and is saved with the
+     entry. Changing an already recorded night edits that entry in place, so a
+     night never ends up with two answers. */
+  function pickSleep(value) {
+    var rec = sleepRecord(currentNight);
+    if (rec) {
+      if (rec.sleep !== value) {
+        var prev = rec.sleep;
+        rec.sleep = value;
+        if (!save()) { rec.sleep = prev; return; }
+        renderHistory();
+        toast('Sleep updated');
+      }
+      editingSleep = false;
+    } else {
+      draft.sleep = (draft.sleep === value) ? null : value;
+    }
+    buzz();
+    syncLogView();
+  }
+
+  function syncSleepCard() {
+    var rec = sleepRecord(currentNight);
+    var asking = !rec || editingSleep;
+    var picked = rec ? rec.sleep : draft.sleep;
+
+    $('sleep-scale').hidden = !asking;
+    $('sleep-recorded').hidden = asking;
+    $('sleep-night').textContent = nightLabel(currentNight) + (rec ? '' : ' \u00b7 asked once a night');
+
+    if (rec) {
+      var opt = optionFor(SLEEP, rec.sleep);
+      $('sleep-value').textContent = 'Recorded: ' + (opt ? opt.emoji + ' ' + opt.label : rec.sleep);
+    }
+
+    document.querySelectorAll('#sleep-scale button').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(picked === Number(b.dataset.value)));
+    });
+  }
+
   function syncLogView() {
     document.querySelectorAll('#view-log .scale button').forEach(function (b) {
       b.setAttribute('aria-pressed', String(draft[b.dataset.scale] === Number(b.dataset.value)));
@@ -414,6 +557,7 @@
     });
     var ta = $('note');
     if (ta && ta.value !== draft.note) ta.value = draft.note;
+    syncSleepCard();
     syncSaveButton();
   }
 
@@ -428,9 +572,14 @@
     if (!hasContent()) return;
     var entry = { id: uid(), ts: new Date().toISOString(), tags: draft.tags.slice(), note: draft.note.trim() };
     SCALES.forEach(function (s) { entry[s.key] = draft[s.key]; });
+    if (draft.sleep != null && !sleepRecord(currentNight)) {
+      entry.sleep = draft.sleep;
+      entry.sleepFor = currentNight;
+    }
     entries.unshift(entry);
     if (!save()) { entries.shift(); return; }
     draft = blank();
+    editingSleep = false;
     syncLogView();
     renderHistory();
     buzz();
@@ -451,8 +600,8 @@
   }
 
   /* ------------------------------ history ------------------------------ */
-  function dayKey(iso) {
-    var d = new Date(iso);
+  function dayKey(iso) { return dayKeyOf(new Date(iso)); }
+  function dayKeyOf(d) {
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
   }
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
@@ -468,10 +617,13 @@
     var d = new Date(+p[0], +p[1] - 1, +p[2]);
     return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
   }
+  function optionFor(scale, value) {
+    if (!scale || value == null) return null;
+    return scale.options.find(function (x) { return x.v === value; }) || null;
+  }
   function emojiFor(scaleKey, value) {
-    var s = SCALES.find(function (x) { return x.key === scaleKey; });
-    if (!s || value == null) return '';
-    var o = s.options.find(function (x) { return x.v === value; });
+    var s = (scaleKey === SLEEP.key) ? SLEEP : SCALES.find(function (x) { return x.key === scaleKey; });
+    var o = optionFor(s, value);
     return o ? o.emoji : '';
   }
 
@@ -525,12 +677,13 @@
 
     var marks = document.createElement('div');
     marks.className = 'marks';
-    SCALES.forEach(function (s) {
+    [SLEEP].concat(SCALES).forEach(function (s) {
       if (e[s.key] == null) return;
       var span = document.createElement('span');
       span.className = 'mark';
       span.innerHTML = '<span class="mk"></span><span></span>';
-      span.children[0].textContent = s.label;
+      span.children[0].textContent = s.short || s.label;
+      if (s === SLEEP && e.sleepFor) span.title = nightLabel(e.sleepFor);
       span.children[1].textContent = emojiFor(s.key, e[s.key]) + ' ' + e[s.key];
       marks.appendChild(span);
     });
@@ -658,10 +811,10 @@
   });
 
   $('export-csv').addEventListener('click', function () {
-    var cols = ['timestamp'].concat(SCALES.map(function (s) { return s.key; }), ['tags', 'note']);
+    var cols = ['timestamp', 'sleep', 'sleep_night'].concat(SCALES.map(function (s) { return s.key; }), ['tags', 'note']);
     var rows = [cols.join(',')];
     entries.slice().reverse().forEach(function (e) {
-      var vals = [e.ts].concat(
+      var vals = [e.ts, e.sleep == null ? '' : e.sleep, e.sleepFor || ''].concat(
         SCALES.map(function (s) { return e[s.key] == null ? '' : e[s.key]; }),
         [(e.tags || []).join('; '), e.note || '']
       );
@@ -760,6 +913,13 @@
       weekday: 'short', month: 'short', day: 'numeric',
       hour: 'numeric', minute: '2-digit'
     });
+    var night = nightKeyNow();
+    if (night !== currentNight) {
+      currentNight = night;
+      editingSleep = false;
+      draft.sleep = null;
+      syncLogView();
+    }
   }
   tick();
   setInterval(tick, 15000);

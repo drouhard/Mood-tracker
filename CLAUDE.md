@@ -20,15 +20,27 @@ requests. Markup, styles, and logic all stay inline in `index.html`.
 
 ## Changing what gets tracked
 
-The log form, history rendering, and CSV export are generated from two lists at
+The log form, history rendering, and CSV export are generated from three lists at
 the top of the `<script>` block in `index.html`:
 
 - `SCALES` — the 1–5 tap scales (`key`, `label`, and five `{v, emoji, label}` options)
 - `TAGS` — the chip labels
+- `SLEEP` — the same shape as one scale, kept separate because it is asked once
+  per night rather than once per entry (see below)
 
 Edit those rather than the rendering code. Keep existing `key` values stable —
 they are the field names in stored entries, and changing one orphans that field
 in everyone's saved data.
+
+## Sleep is per night, not per entry
+
+`SLEEP` is answered at most once per night. A night is keyed by the morning it
+ended (`nightKeyNow()`; before 4am that is still the previous morning), and the
+answer is stored as `sleep` plus `sleepFor` on whichever entry answered it.
+`sleepRecord(nightKey)` is the single check for "do we already have this night" —
+it drives whether the card asks, collapses, or edits in place. Answering an
+unrecorded night rides along in the draft; changing a recorded one mutates that
+stored entry and saves immediately, so a night never gets two answers.
 
 ## Conventions
 
